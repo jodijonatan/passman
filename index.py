@@ -31,7 +31,7 @@ except ImportError:
 # ─── Konfigurasi Global ────────────────────────────────────────────────────────
 console = Console()
 DATA_FILE = "passwords.json"          # File penyimpanan data
-SALT = "SecureVault_2024_Salt_Key"    # Salt untuk hashing (bisa diganti)
+SALT = "PassMan_Salt_Key"    # Salt untuk hashing (bisa diganti)
 MIN_PASSWORD_LENGTH = 6               # Minimal panjang master password
 
 # ─── Enkripsi Sederhana (Base64 XOR) ──────────────────────────────────────────
@@ -826,7 +826,7 @@ def show_statistics(data: dict):
     
     console.print(Panel(
         stats_text,
-        title="[bold blue]📊 STATISTIK SECUREVAULT[/bold blue]",
+        title="[bold blue]📊 STATISTIK PASSMAN[/bold blue]",
         border_style="blue",
         padding=(1, 2)
     ))
@@ -890,7 +890,7 @@ def main():
                 clear_screen()
                 console.print(Panel(
                     Align.center(
-                        "[bold cyan]Terima kasih telah menggunakan SecureVault! 🔐[/bold cyan]\n"
+                        "[bold cyan]Terima kasih telah menggunakan PassMan! 🔐[/bold cyan]\n"
                         "[dim]Password Anda tetap aman.[/dim]"
                     ),
                     border_style="cyan",
