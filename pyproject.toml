@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "passman"
+version = "1.0.0"
+description = "Password Manager CLI menggunakan Rich"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "rich>=13.0.0",
+    "pyperclip>=1.8.2",
+]
+
+[project.scripts]
+passman = "passman.main:main"

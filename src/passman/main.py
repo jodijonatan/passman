@@ -1,238 +1,26 @@
-# ─── Import Library ────────────────────────────────────────────────────────────
-import sys
-import os
-
-# Ensure UTF-8 output on Windows to prevent UnicodeEncodeError
-if sys.platform.startswith("win"):
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
-    except Exception:
-        pass
-
-import json
-import time
-import uuid
-import random
-import string
-import hashlib
 import getpass
-import base64
+import uuid
+import time
 from datetime import datetime
-
-# Rich: library tampilan terminal yang modern dan berwarna
-from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 from rich.prompt import Prompt, Confirm
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich import print as rprint
 from rich.text import Text
-from rich.columns import Columns
 from rich.align import Align
 
-# Pyperclip: copy ke clipboard (opsional, handle jika tidak ada)
-try:
+from passman.config import console, MIN_PASSWORD_LENGTH, CLIPBOARD_AVAILABLE, DATA_FILE
+from passman.utils import clear_screen, show_loading
+from passman.ui import show_banner, show_menu
+from passman.crypto import (
+    hash_password, simple_encrypt, simple_decrypt, 
+    generate_strong_password, calculate_password_strength
+)
+from passman.storage import load_data, save_data
+
+# Import opsional untuk pyperclip
+if CLIPBOARD_AVAILABLE:
     import pyperclip
-    CLIPBOARD_AVAILABLE = True
-except ImportError:
-    CLIPBOARD_AVAILABLE = False
 
-# ─── Konfigurasi Global ────────────────────────────────────────────────────────
-console = Console()
-DATA_FILE = "passwords.json"          # File penyimpanan data
-SALT = "PassMan_Salt_Key"    # Salt untuk hashing (bisa diganti)
-MIN_PASSWORD_LENGTH = 6               # Minimal panjang master password
-
-# ─── Enkripsi Sederhana (Base64 XOR) ──────────────────────────────────────────
-def simple_encrypt(text: str, key: str) -> str:
-    """
-    Enkripsi sederhana menggunakan XOR + Base64.
-    Tidak sekuat AES, tapi cukup untuk pemula.
-    
-    Args:
-        text: Teks yang akan dienkripsi
-        key: Kunci enkripsi (master password)
-    
-    Returns:
-        String terenkripsi dalam format Base64
-    """
-    # Buat key stream berulang sepanjang text
-    key_stream = (key * (len(text) // len(key) + 1))[:len(text)]
-    
-    # XOR setiap karakter dengan key stream
-    encrypted_bytes = bytes(ord(c) ^ ord(k) for c, k in zip(text, key_stream))
-    
-    # Encode ke Base64 agar aman disimpan sebagai string
-    return base64.b64encode(encrypted_bytes).decode('utf-8')
-
-
-def simple_decrypt(encrypted_text: str, key: str) -> str:
-    """
-    Dekripsi teks yang sudah dienkripsi dengan simple_encrypt.
-    
-    Args:
-        encrypted_text: Teks terenkripsi dalam format Base64
-        key: Kunci dekripsi (harus sama dengan kunci enkripsi)
-    
-    Returns:
-        Teks asli yang sudah didekripsi
-    """
-    # Decode dari Base64
-    encrypted_bytes = base64.b64decode(encrypted_text.encode('utf-8'))
-    
-    # Buat key stream yang sama
-    key_stream = (key * (len(encrypted_bytes) // len(key) + 1))[:len(encrypted_bytes)]
-    
-    # XOR kembali untuk mendapatkan teks asli
-    decrypted = ''.join(chr(b ^ ord(k)) for b, k in zip(encrypted_bytes, key_stream))
-    
-    return decrypted
-
-
-def hash_password(password: str) -> str:
-    """
-    Hash password menggunakan SHA-256 dengan salt.
-    Digunakan untuk menyimpan master password dengan aman.
-    
-    Args:
-        password: Password yang akan di-hash
-    
-    Returns:
-        String hash dalam format hex
-    """
-    salted = f"{SALT}{password}{SALT}"
-    return hashlib.sha256(salted.encode()).hexdigest()
-
-
-# ─── Manajemen File JSON ───────────────────────────────────────────────────────
-def load_data() -> dict:
-    """
-    Muat data dari file JSON.
-    Jika file belum ada, kembalikan struktur data kosong.
-    
-    Returns:
-        Dictionary berisi master_hash dan list passwords
-    """
-    if not os.path.exists(DATA_FILE):
-        # Kembalikan struktur data default jika file belum ada
-        return {
-            "master_hash": None,
-            "passwords": []
-        }
-    
-    try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        # Jika file rusak, kembalikan data kosong
-        console.print("[red]⚠ File data rusak! Membuat data baru...[/red]")
-        return {
-            "master_hash": None,
-            "passwords": []
-        }
-
-
-def save_data(data: dict) -> bool:
-    """
-    Simpan data ke file JSON dengan format yang rapi.
-    
-    Args:
-        data: Dictionary data yang akan disimpan
-    
-    Returns:
-        True jika berhasil, False jika gagal
-    """
-    try:
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-        return True
-    except IOError as e:
-        console.print(f"[red]✗ Gagal menyimpan data: {e}[/red]")
-        return False
-
-
-# ─── Tampilan UI ───────────────────────────────────────────────────────────────
-def clear_screen():
-    """Bersihkan layar terminal (support Windows & Unix/Linux/Mac)."""
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-
-def show_banner():
-    """Tampilkan banner ASCII art aplikasi."""
-    banner_text = """
- ██████╗ █████╗  ██████╗██╗   ██╗██████╗ ███████╗
-██╔════╝██╔══██╗██╔════╝██║   ██║██╔══██╗██╔════╝
-╚█████╗ ███████║██║     ██║   ██║██████╔╝█████╗  
- ╚═══██╗██╔══██║██║     ██║   ██║██╔══██╗██╔══╝  
-██████╔╝██║  ██║╚██████╗╚██████╔╝██║  ██║███████╗
-╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
-       ██╗   ██╗ █████╗ ██╗   ██╗██╗  ████████╗
-       ██║   ██║██╔══██╗██║   ██║██║  ╚══██╔══╝
-       ██║   ██║███████║██║   ██║██║     ██║   
-       ╚██╗ ██╔╝██╔══██║██║   ██║██║     ██║   
-        ╚████╔╝ ██║  ██║╚██████╔╝███████╗██║   
-         ╚═══╝  ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝   
-"""
-    console.print(Panel(
-        Align.center(
-            Text(banner_text, style="bold cyan") +
-            Text("\n🔐 Password Manager Modern  v1.0.0\n", style="bold yellow") +
-            Text("Kelola password Anda dengan aman & mudah", style="dim white")
-        ),
-        border_style="cyan",
-        padding=(0, 2)
-    ))
-
-
-def show_loading(message: str, duration: float = 1.5):
-    """
-    Tampilkan animasi loading sederhana.
-    
-    Args:
-        message: Pesan yang ditampilkan saat loading
-        duration: Durasi loading dalam detik
-    """
-    with Progress(
-        SpinnerColumn(style="cyan"),
-        TextColumn(f"[cyan]{message}...[/cyan]"),
-        console=console,
-        transient=True  # Hapus progress bar setelah selesai
-    ) as progress:
-        task = progress.add_task("", total=100)
-        steps = int(duration * 20)  # 20 langkah per detik
-        for _ in range(steps):
-            progress.update(task, advance=100 / steps)
-            time.sleep(duration / steps)
-
-
-def show_menu():
-    """Tampilkan menu utama interaktif."""
-    menu_items = [
-        ("1", "👁  Lihat Semua Password", "cyan"),
-        ("2", "➕  Tambah Password Baru", "green"),
-        ("3", "🔍  Cari Password", "yellow"),
-        ("4", "🗑  Hapus Password", "red"),
-        ("5", "🎲  Generate Password Acak", "magenta"),
-        ("6", "📊  Statistik", "blue"),
-        ("0", "🚪  Keluar", "white"),
-    ]
-    
-    # Buat grid menu dengan dua kolom
-    menu_text = Text()
-    for number, label, color in menu_items:
-        menu_text.append(f"  [{number}]", style=f"bold {color}")
-        menu_text.append(f"  {label}\n", style="white")
-    
-    console.print(Panel(
-        menu_text,
-        title="[bold cyan]📋 MENU UTAMA[/bold cyan]",
-        border_style="cyan",
-        padding=(1, 3)
-    ))
-
-
-# ─── Autentikasi Master Password ──────────────────────────────────────────────
 def setup_master_password(data: dict) -> str:
     """
     Setup master password pertama kali.
@@ -275,7 +63,6 @@ def setup_master_password(data: dict) -> str:
         show_loading("Menyimpan konfigurasi", 1.0)
         return password
 
-
 def login(data: dict) -> str | None:
     """
     Proses login dengan master password.
@@ -307,8 +94,6 @@ def login(data: dict) -> str | None:
     
     return None
 
-
-# ─── Fungsi Utama Password Manager ────────────────────────────────────────────
 def view_all_passwords(data: dict, master_password: str):
     """
     Tampilkan semua password tersimpan dalam tabel yang rapi.
@@ -375,7 +160,6 @@ def view_all_passwords(data: dict, master_password: str):
         if 0 <= idx < len(passwords):
             show_password_detail(passwords[idx], master_password)
 
-
 def show_password_detail(entry: dict, master_password: str):
     """
     Tampilkan detail lengkap satu entri password.
@@ -416,7 +200,6 @@ def show_password_detail(entry: dict, master_password: str):
             console.print("[green]  ✓ Password berhasil disalin ke clipboard![/green]")
     
     input("\n  Tekan Enter untuk kembali...")
-
 
 def add_password(data: dict, master_password: str):
     """
@@ -520,7 +303,6 @@ def add_password(data: dict, master_password: str):
     
     input("\n  Tekan Enter untuk kembali...")
 
-
 def search_password(data: dict, master_password: str):
     """
     Cari password berdasarkan nama website atau username.
@@ -589,7 +371,6 @@ def search_password(data: dict, master_password: str):
         idx = int(choice) - 1
         if 0 <= idx < len(results):
             show_password_detail(results[idx], master_password)
-
 
 def delete_password(data: dict):
     """
@@ -664,45 +445,6 @@ def delete_password(data: dict):
     
     input("\n  Tekan Enter untuk kembali...")
 
-
-def generate_strong_password(length: int = 16) -> str:
-    """
-    Generate password acak yang kuat.
-    Mengandung huruf besar, huruf kecil, angka, dan simbol.
-    
-    Args:
-        length: Panjang password yang diinginkan (default: 16)
-    
-    Returns:
-        String password yang kuat dan acak
-    """
-    # Definisi karakter yang digunakan
-    lowercase = string.ascii_lowercase    # a-z
-    uppercase = string.ascii_uppercase    # A-Z
-    digits = string.digits                # 0-9
-    symbols = "!@#$%^&*()_+-=[]{}|;:,.<>?"  # Simbol umum
-    
-    # Gabungkan semua karakter
-    all_chars = lowercase + uppercase + digits + symbols
-    
-    # Pastikan minimal 1 karakter dari setiap kategori (password lebih kuat)
-    password_chars = [
-        random.choice(lowercase),
-        random.choice(uppercase),
-        random.choice(digits),
-        random.choice(symbols),
-    ]
-    
-    # Isi sisa panjang dengan karakter acak
-    for _ in range(length - 4):
-        password_chars.append(random.choice(all_chars))
-    
-    # Acak urutan karakter agar tidak terprediksi
-    random.shuffle(password_chars)
-    
-    return ''.join(password_chars)
-
-
 def show_password_generator():
     """
     Menu interaktif untuk generate password acak.
@@ -764,33 +506,6 @@ def show_password_generator():
         elif choice == '0':
             break
 
-
-def calculate_password_strength(password: str) -> int:
-    """
-    Hitung skor kekuatan password (0-100).
-    
-    Args:
-        password: Password yang akan dinilai
-    
-    Returns:
-        Skor antara 0-100
-    """
-    score = 0
-    
-    # Panjang password
-    if len(password) >= 8:  score += 15
-    if len(password) >= 12: score += 15
-    if len(password) >= 16: score += 10
-    
-    # Variasi karakter
-    if any(c.islower() for c in password):  score += 15
-    if any(c.isupper() for c in password):  score += 15
-    if any(c.isdigit() for c in password):  score += 15
-    if any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password): score += 15
-    
-    return min(score, 100)
-
-
 def show_statistics(data: dict):
     """
     Tampilkan statistik singkat tentang password tersimpan.
@@ -843,8 +558,6 @@ def show_statistics(data: dict):
     
     input("\n  Tekan Enter untuk kembali...")
 
-
-# ─── Main Program ──────────────────────────────────────────────────────────────
 def main():
     """
     Fungsi utama program.
@@ -911,11 +624,8 @@ def main():
             console.print("[red]  ✗ Pilihan tidak valid! Masukkan angka 0-6.[/red]")
             time.sleep(1)
 
-
-# ─── Entry Point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        # Handle Ctrl+C dengan elegan
         console.print("\n\n[yellow]  ⚠ Program dihentikan oleh pengguna (Ctrl+C).[/yellow]\n")
