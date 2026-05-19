@@ -39,17 +39,23 @@ Ensure you have Python 3.7 or higher installed on your system.
    cd passman
    ```
 
-2. **Install dependencies**:
+2. **Install the package**:
+   Install the package in editable mode (which automatically installs required dependencies):
    ```bash
-   pip install rich pyperclip
+   pip install -e .
    ```
 
 ### Running the Application
 
-To start PassMan, simply run:
+Once installed, you can launch PassMan from any directory using the CLI command:
 
 ```bash
-python index.py
+passman
+```
+
+Or run the module directly using Python:
+```bash
+python -m passman.main
 ```
 
 > **Note**: On your first run, you will be prompted to create a **Master Password**. Choose a strong one, as it will be the only way to decrypt your stored passwords!
