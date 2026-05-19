@@ -35,7 +35,7 @@ Ensure you have Python 3.7 or higher installed on your system.
 1. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/yourusername/passman.git
+   git clone https://github.com/jodijonatan/passman.git
    cd passman
    ```
 
@@ -54,6 +54,7 @@ passman
 ```
 
 Or run the module directly using Python:
+
 ```bash
 python -m passman.main
 ```
